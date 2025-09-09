@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hide5459.ai-girlfriend-chat"
     },
     "android": {
       "adaptiveIcon": {
