@@ -13,6 +13,7 @@ import {
 import { safetyFilter } from '../../lib/safety';
 import { memoryManager } from '../../lib/memory';
 import { notificationManager } from '../../lib/notifications';
+import { useLanguage } from '../../lib/i18n';
 
 interface AppSettings {
   strictMode: boolean;
@@ -24,6 +25,8 @@ interface AppSettings {
 }
 
 export default function MainSettingsScreen() {
+  const { t, currentLanguage, supportedLanguages } = useLanguage();
+  
   const [settings, setSettings] = useState<AppSettings>({
     strictMode: true,
     blockExplicitContent: true,
@@ -34,7 +37,7 @@ export default function MainSettingsScreen() {
   });
 
   const [version] = useState('1.0.0 (MVP)');
-  const [buildNumber] = useState('20250908');
+  const [buildNumber] = useState('20250909');
 
   useEffect(() => {
     loadSettings();
@@ -63,17 +66,17 @@ export default function MainSettingsScreen() {
 
   const clearAllData = () => {
     Alert.alert(
-      '全データ削除',
-      'すべての会話履歴、記憶、設定が削除されます。この操作は取り消せません。本当に削除しますか？',
+      t('settings.clearAllData'),
+      t('settings.clearAllConfirm'),
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '削除',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             await memoryManager.clearAllMemories();
             await notificationManager.cancelAllNotifications();
-            Alert.alert('完了', 'すべてのデータが削除されました');
+            Alert.alert(t('common.success'), t('settings.clearComplete'));
           },
         },
       ]
@@ -84,18 +87,23 @@ export default function MainSettingsScreen() {
     try {
       const memoryData = await memoryManager.exportMemoryData();
       // 実際の実装では、データを共有やクラウドにバックアップ
-      Alert.alert('エクスポート', 'データのエクスポート機能は開発中です');
+      Alert.alert(t('settings.exportData'), t('settings.exportInProgress'));
     } catch (error) {
-      Alert.alert('エラー', 'データのエクスポートに失敗しました');
+      Alert.alert(t('common.error'), t('settings.exportError'));
     }
   };
 
   const showAbout = () => {
     Alert.alert(
-      'AI恋人チャットアプリについて',
-      `バージョン: ${version}\nビルド: ${buildNumber}\n\n日本のオタク層向けの健全な対話型AIアプリです。ときめきメモリアル風の優しい会話を楽しめます。\n\n全年齢向けで安全な設計になっています。`,
-      [{ text: 'OK' }]
+      t('settings.about'),
+      `${t('common.version')}: ${version}\n${t('settings.buildNumber')}: ${buildNumber}\n\n${t('settings.aboutDescription')}`,
+      [{ text: t('common.ok') }]
     );
+  };
+
+  const navigateToLanguageSettings = () => {
+    // 実際の実装では、react-navigationを使用してLanguageSettingsScreenに遷移
+    Alert.alert(t('settings.language'), t('settings.languageNavigation'));
   };
 
   const renderSettingRow = (
@@ -124,39 +132,50 @@ export default function MainSettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>設定</Text>
+        <Text style={styles.headerTitle}>{t('settings.title')}</Text>
       </View>
       
       <ScrollView style={styles.content}>
+        {/* 言語設定セクション */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🌐 {t('settings.language')}</Text>
+          
+          <TouchableOpacity style={styles.actionButton} onPress={navigateToLanguageSettings}>
+            <Text style={styles.actionButtonText}>
+              {t('settings.selectLanguage')} ({supportedLanguages.find(lang => lang.code === currentLanguage)?.nativeName})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* セーフティ設定セクション */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🛡️ セーフティ設定</Text>
+          <Text style={styles.sectionTitle}>🛡️ {t('settings.safetySettings')}</Text>
           
           {renderSettingRow(
-            '厳格モード',
-            '全年齢向けの最も安全な設定にします',
+            t('settings.strictMode'),
+            t('settings.strictModeDescription'),
             settings.strictMode,
             () => updateSetting('strictMode', !settings.strictMode)
           )}
           
           {renderSettingRow(
-            '露骨なコンテンツをブロック',
-            '成人向けの内容を自動的にブロックします',
+            t('settings.blockExplicit'),
+            t('settings.blockExplicitDescription'),
             settings.blockExplicitContent,
             () => updateSetting('blockExplicitContent', !settings.blockExplicitContent)
           )}
           
           {renderSettingRow(
-            'ロマンチックコンテンツを制限',
-            '恋愛的な会話を制限します（ときメモ要素も含む）',
+            t('settings.blockRomantic'),
+            t('settings.blockRomanticDescription'),
             settings.blockRomanticContent,
             () => updateSetting('blockRomanticContent', !settings.blockRomanticContent),
             true
           )}
           
           {renderSettingRow(
-            '軽微な提案を許可',
-            'デートの提案など軽度な内容を許可します',
+            t('settings.allowSuggestions'),
+            t('settings.allowSuggestionsDescription'),
             settings.allowMildSuggestions,
             () => updateSetting('allowMildSuggestions', !settings.allowMildSuggestions)
           )}
@@ -164,18 +183,18 @@ export default function MainSettingsScreen() {
         
         {/* プライバシー設定セクション */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔒 プライバシー設定</Text>
+          <Text style={styles.sectionTitle}>🔒 {t('settings.privacySettings')}</Text>
           
           {renderSettingRow(
-            'データ収集',
-            '改善のための匿名データ収集を許可します',
+            t('settings.dataCollection'),
+            t('settings.dataCollectionDescription'),
             settings.dataCollectionEnabled,
             () => updateSetting('dataCollectionEnabled', !settings.dataCollectionEnabled)
           )}
           
           {renderSettingRow(
-            '分析データ送信',
-            'アプリの使用状況分析のためのデータ送信',
+            t('settings.analytics'),
+            t('settings.analyticsDescription'),
             settings.analyticsEnabled,
             () => updateSetting('analyticsEnabled', !settings.analyticsEnabled)
           )}
@@ -183,10 +202,10 @@ export default function MainSettingsScreen() {
         
         {/* データ管理セクション */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💾 データ管理</Text>
+          <Text style={styles.sectionTitle}>💾 {t('settings.dataManagement')}</Text>
           
           <TouchableOpacity style={styles.actionButton} onPress={exportData}>
-            <Text style={styles.actionButtonText}>データをエクスポート</Text>
+            <Text style={styles.actionButtonText}>{t('settings.exportData')}</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -194,40 +213,36 @@ export default function MainSettingsScreen() {
             onPress={clearAllData}
           >
             <Text style={[styles.actionButtonText, styles.dangerButtonText]}>
-              全データを削除
+              {t('settings.clearAllData')}
             </Text>
           </TouchableOpacity>
         </View>
         
         {/* その他セクション */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ℹ️ その他</Text>
+          <Text style={styles.sectionTitle}>ℹ️ {t('settings.other')}</Text>
           
           <TouchableOpacity style={styles.infoRow} onPress={showAbout}>
-            <Text style={styles.infoLabel}>アプリについて</Text>
+            <Text style={styles.infoLabel}>{t('settings.about')}</Text>
             <Text style={styles.infoValue}>{version}</Text>
           </TouchableOpacity>
           
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>ビルド番号</Text>
+            <Text style={styles.infoLabel}>{t('settings.buildNumber')}</Text>
             <Text style={styles.infoValue}>{buildNumber}</Text>
           </View>
           
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>対象年齢</Text>
-            <Text style={styles.infoValue}>全年齢</Text>
+            <Text style={styles.infoLabel}>{t('settings.targetAge')}</Text>
+            <Text style={styles.infoValue}>{t('settings.allAges')}</Text>
           </View>
         </View>
         
         {/* 免責事項 */}
         <View style={styles.disclaimerSection}>
-          <Text style={styles.disclaimerTitle}>⚠️ 重要な注意事項</Text>
+          <Text style={styles.disclaimerTitle}>⚠️ {t('safety.importantNotice')}</Text>
           <Text style={styles.disclaimerText}>
-            • このアプリは全年齢向けの健全な会話を目的としています{'\n'}
-            • 不適切な利用は禁止されています{'\n'}
-            • AI応答は参考程度に留め、重要な判断には使用しないでください{'\n'}
-            • メンタルヘルスの問題がある場合は専門機関にご相談ください{'\n'}
-            • 個人情報は適切に保護されます
+            {t('safety.disclaimerText')}
           </Text>
         </View>
       </ScrollView>

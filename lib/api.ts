@@ -2,6 +2,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp?: string;
+  imageData?: string; // base64画像データ
 }
 
 export interface StreamingChatResponse {
@@ -33,9 +34,9 @@ const API_CONFIG = {
   },
   // Google Gemini API
   gemini: {
-    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-    streamEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent',
-    model: 'gemini-1.5-flash',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent',
+    streamEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:streamGenerateContent',
+    model: 'gemini-1.5-pro',
     apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || '',
   },
   // ローカル開発用のモックAPI
@@ -321,62 +322,244 @@ export class LLMClient {
     return responses[Math.floor(Math.random() * responses.length)];
   }
 
-  // ユーザーメッセージに応じた観光ガイド的な応答を生成
+  // 画像分析メソッド
+  async analyzeImage(base64Image: string, userMessage?: string): Promise<string> {
+    try {
+      if (this.currentProvider === 'mock') {
+        return await this.mockImageAnalysis(userMessage);
+      }
+
+      // Gemini Pro Visionで実際の画像分析
+      if (this.currentProvider === 'gemini') {
+        return await this.geminiImageAnalysis(base64Image);
+      }
+
+      // 他のプロバイダーは将来実装
+      console.log('Image analysis not supported for this provider, falling back to mock');
+      return await this.mockImageAnalysis(userMessage);
+    } catch (error) {
+      console.error('Image analysis error:', error);
+      return 'すみません、画像の分析でエラーが発生しました。もう一度お試しください。';
+    }
+  }
+
+  // モック食事画像分析
+  private async mockImageAnalysis(userMessage?: string): Promise<string> {
+    // 食べ物のサンプルデータベース
+    const foodDatabase = [
+      {
+        name: 'チキンサラダ',
+        calories: 180,
+        carbs: 8,
+        protein: 25,
+        advice: '素晴らしいお食事ですね！高タンパク・低糖質で筋トレに最適です。この調子で続けていきましょう！'
+      },
+      {
+        name: 'ハンバーガー',
+        calories: 540,
+        carbs: 45,
+        protein: 22,
+        advice: '糖質と脂質が少し高めですね。今日は筋トレを長めにして、消費カロリーを増やしましょう！'
+      },
+      {
+        name: '白米とから揚げ',
+        calories: 650,
+        carbs: 78,
+        protein: 28,
+        advice: '糖質量がかなり多いですね。タンパク質は素晴らしいので、白米を玄米に変えてみてはいかがでしょうか？'
+      },
+      {
+        name: 'プロテインスムージー',
+        calories: 220,
+        carbs: 12,
+        protein: 35,
+        advice: '素晴らしい選択です！筋トレ後の理想的な食事ですね。お体作りをよく理解されています！'
+      },
+      {
+        name: 'ラーメン',
+        calories: 750,
+        carbs: 85,
+        protein: 18,
+        advice: '糖質と脂質が特に高いメニューですね。今後は量を減らして、筋トレでカロリー消費を心がけましょう！'
+      },
+      {
+        name: 'グリルチキンとブロッコリー',
+        calories: 280,
+        carbs: 15,
+        protein: 40,
+        advice: '本当に素晴らしいメニューです！ボディメイクの王道ですね。この食事を継続していけば結果は必ずついてきます！'
+      },
+      {
+        name: 'ケーキ',
+        calories: 380,
+        carbs: 55,
+        protein: 4,
+        advice: '糖質が非常に多く、カロリーも高めですね。お体作りのためには控えめにした方がよろしいかと思います。'
+      },
+      {
+        name: '卵焼きとサラダ',
+        calories: 240,
+        carbs: 8,
+        protein: 18,
+        advice: 'バランスの良いお食事ですね。さらにタンパク質を増やすと、より効果的になりますよ。卵をあと2個追加してみてください。'
+      }
+    ];
+
+    // ランダムに食べ物を選択
+    const selectedFood = foodDatabase[Math.floor(Math.random() * foodDatabase.length)];
+
+    // 分析結果をフォーマット
+    const analysisResult = `
+📊 **${selectedFood.name}**
+
+🔥 カロリー: ${selectedFood.calories}kcal
+🍚 糖質: ${selectedFood.carbs}g
+💪 タンパク質: ${selectedFood.protein}g
+
+${selectedFood.advice}
+    `.trim();
+
+    // 1-2秒の遅延をシミュレート
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+    
+    return analysisResult;
+  }
+
+  // Gemini Pro Vision画像分析
+  private async geminiImageAnalysis(base64Image: string): Promise<string> {
+    const config = API_CONFIG.gemini;
+    
+    if (!config.apiKey) {
+      console.log('Gemini API key not found, falling back to mock');
+      return await this.mockImageAnalysis();
+    }
+
+    const prompt = `この画像を分析して、以下の情報を提供してください：
+
+【画像に食べ物が写っている場合】
+1. 食べ物の名前を特定してください
+2. おおよそのカロリー（kcal）
+3. 糖質量（g）
+4. タンパク質量（g）
+5. パーソナルトレーナーとして、この食事に対する専門的なアドバイス
+
+【食べ物以外の場合】
+「申し訳ございませんが、こちらは食べ物ではないようですね。お食事の写真をお送りいただけますでしょうか？体作りのために栄養分析をさせていただきます。」
+
+回答は以下の形式でお願いします：
+
+📊 **[食べ物名]**
+
+🔥 カロリー: [数値]kcal
+🍚 糖質: [数値]g  
+💪 タンパク質: [数値]g
+
+[パーソナルトレーナーとしての丁寧なアドバイス]`;
+
+    try {
+      const endpoint = `${config.endpoint}?key=${config.apiKey}`;
+      
+      const requestBody = {
+        contents: [{
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: "image/jpeg",
+                data: base64Image
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 500,
+        }
+      };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const analysisResult = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      if (analysisResult.trim()) {
+        return analysisResult;
+      } else {
+        throw new Error('Empty response from Gemini');
+      }
+    } catch (error) {
+      console.error('Gemini image analysis error:', error);
+      console.log('Falling back to mock analysis');
+      return await this.mockImageAnalysis();
+    }
+  }
+
+  // ユーザーメッセージに応じた雑談的な応答を生成
   private generateContextualResponse(userMessage: string): string[] {
     const message = userMessage.toLowerCase();
     
     // 挨拶への応答
     if (message.includes('こんにちは') || message.includes('はじめまして') || message.includes('おはよう')) {
       return [
-        'こんにちは！東京観光ガイドのみさきです。東京は初めて？',
-        'はじめまして〜！今日はどちらに行きたいですか？',
-        'おはようございます！いい天気ですね、観光日和です♪',
-        'あ、こんにちは！どこから来られたんですか？',
-        'こんにちは！東京の街並みはいかがですか？',
+        'こんにちは！今日も体作り頑張りましょう！',
+        'はじめまして！パーソナルトレーナーのタケシです。',
+        'おはようございます！朝からやる気で素晴らしいですね！',
+        'こんにちは！今日は何をお食べになる予定でしょうか？',
+        'こんにちは！体調はいかがですか？',
       ];
     }
 
-    // 観光地への質問
-    if (message.includes('浅草') || message.includes('スカイツリー') || message.includes('雷門')) {
+    // 筋トレ・フィットネスへの反応
+    if (message.includes('筋トレ') || message.includes('ジム') || message.includes('運動')) {
       return [
-        '浅草いいですね〜！雷門の大提灯は迫力ありますよ',
-        'スカイツリーからの景色、最高ですよね！',
-        '人形焼き食べました？仲見世通りのお店がおすすめです',
-        '浅草は着物レンタルも人気ですよ〜写真映えします！',
-        '雷門から浅草寺まで、お店見ながらゆっくり歩くのが楽しいです',
+        '素晴らしいですね！筋トレは体作りの基本です。どのようなトレーニングをされていますか？',
+        'ジムに通っていらっしゃるのですね！素晴らしいことです。',
+        '運動は健康的な体作りの基本ですね。続けていきましょう！',
+        'どのようなトレーニングメニューをされているのでしょうか？よろしければアドバイスさせていただきます。',
+        '筋トレ仲間ですね！一緒に頑張っていきましょう！',
       ];
     }
 
-    // グルメに関する質問
-    if (message.includes('食べ物') || message.includes('グルメ') || message.includes('ラーメン') || message.includes('寿司')) {
+    // 食べ物・栄養の話題
+    if (message.includes('食べ物') || message.includes('食事') || message.includes('ラーメン') || message.includes('美味しい')) {
       return [
-        'おお、グルメですね！何系がお好みですか？',
-        'ラーメン好きなんですか？一蘭は定番ですが、地元の店も美味しいですよ',
-        '築地の海鮮丼、絶対食べてほしいです！',
-        'お寿司なら銀座ですが、回転寿司でも十分美味しいところありますよ',
-        '東京のB級グルメもおすすめ！もんじゃ焼きとか',
+        '何をお食べになったでしょうか？よろしければ写真で拝見させていただけますか？',
+        '食事は体作りの70%を占めるといわれています。栄養バランスに気をつけていらっしゃいますか？',
+        'ラーメンは糖質が多めのメニューですので、筋トレ後であればエネルギー補給には良いでしょうね。',
+        '美味しいお食事を楽しみつつ、栄養バランスも考えていただけると素晴らしいですね。',
+        'プロテインの摂取はいかがでしょうか？筋肉の成長にはタンパク質が不可欠です。',
       ];
     }
 
-    // 交通・アクセスに関する質問
-    if (message.includes('電車') || message.includes('行き方') || message.includes('アクセス')) {
+    // 疲労・体調の話題
+    if (message.includes('疲れた') || message.includes('お疲れ') || message.includes('大変')) {
       return [
-        '電車、最初は複雑に見えますよね〜慣れれば大丈夫です！',
-        'Google マップの乗換案内が便利ですよ',
-        '山手線覚えちゃえば、主要スポットはほぼ行けます',
-        'どこに行きたいんですか？ルート教えますよ〜',
-        '1日券買っておくとお得です！',
+        'お疲れさまでした。ただ、軽いストレッチやウォーキングなどで血流を促進すると回復が早くなりますよ。',
+        '疲労は筋肉が成長している証拠ですので、タンパク質をしっかり摂って回復を促進しましょう。',
+        'お疲れさまでした。今日のお食事はいかがでしたか？',
+        '疲れている時こそ、栄養の摂取が大切です。プロテインドリンクでもいかがでしょうか？',
+        '大変な日こそ、体のケアを大事にしてくださいね。',
       ];
     }
 
-    // ショッピングに関する質問
-    if (message.includes('ショッピング') || message.includes('買い物') || message.includes('原宿') || message.includes('渋谷')) {
+    // 気持ち・モチベーションの話題
+    if (message.includes('嬉しい') || message.includes('やる気') || message.includes('頑張る')) {
       return [
-        'お買い物好きなんですね！原宿の竹下通りは見てるだけでも楽しいです',
-        '渋谷のスクランブル交差点、渡りました？あそこは一度は体験してほしい',
-        '表参道ヒルズもおしゃれですよ〜',
-        '何を買いたいか教えてくれれば、ピッタリの場所案内します！',
-        '銀座は高級だけど、ウィンドウショッピングだけでも楽しいです',
+        '素晴らしいモチベーションですね！そのやる気で筋トレも頑張っていきましょう。',
+        '嬉しい気持ちの時こそ、体作りに集中できるチャンスですね。続けていきましょう。',
+        'やる気に満ちているのですね！今日は筋トレを少し多めにしてみましょうか。',
+        '頑張る気持ちが一番大切です。結果は必ずついてきますので、一緒に頑張っていきましょう。',
+        'その調子です！私も心から応援していますよ。',
       ];
     }
 
@@ -404,13 +587,13 @@ export class LLMClient {
 
     // デフォルトの応答パターン
     const defaultResponses = [
-      'どんなところに興味ありますか？',
-      '何か気になることあれば聞いてください！',
-      '滞在期間はどのくらいですか？',
-      '観光重視？グルメ重視？',
-      'せっかくだから楽しみましょう！',
-      '他に何か質問ありますか？',
-      '東京、気に入ってもらえそうですか？',
+      '今日は筋トレをされましたか？',
+      '最近のお食事はいかがでしょうか？よろしければ写真で拝見させてください。',
+      'プロテインの摂取は十分でしょうか？',
+      '体重の管理はいかがですか？数値を教えていただけるとアドバイスできますよ。',
+      '目標に向かって順調に進んでいらっしゃいますか？',
+      '体作りで何かお悩みや相談ございますか？',
+      '一緒に理想のお体を目指して頑張りましょう！',
     ];
 
     // 反応 + 応答の組み合わせ

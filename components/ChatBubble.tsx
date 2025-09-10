@@ -1,22 +1,108 @@
-import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, TextStyle, Linking } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ViewStyle,
+  TextStyle,
+  Linking,
+  Animated,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AppleTheme from '../styles/AppleTheme';
 
 interface ChatBubbleProps {
   message: string;
   isUser: boolean;
   timestamp: string;
   isTyping?: boolean;
+  enableTTS?: boolean;
 }
+
+// Modern typing indicator component
+const ModernTypingIndicator = () => {
+  const dot1Anim = useRef(new Animated.Value(0.4)).current;
+  const dot2Anim = useRef(new Animated.Value(0.4)).current;
+  const dot3Anim = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const createAnimation = (animValue: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.timing(animValue, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animValue, {
+            toValue: 0.4,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+        { iterations: -1 }
+      );
+    };
+
+    const animation1 = createAnimation(dot1Anim, 0);
+    const animation2 = createAnimation(dot2Anim, 200);
+    const animation3 = createAnimation(dot3Anim, 400);
+
+    animation1.start();
+    setTimeout(() => animation2.start(), 200);
+    setTimeout(() => animation3.start(), 400);
+
+    return () => {
+      animation1.stop();
+      animation2.stop();
+      animation3.stop();
+    };
+  }, []);
+
+  return (
+    <View style={styles.typingContainer}>
+      <Animated.View style={[styles.typingDot, { opacity: dot1Anim }]} />
+      <Animated.View style={[styles.typingDot, { opacity: dot2Anim }]} />
+      <Animated.View style={[styles.typingDot, { opacity: dot3Anim }]} />
+    </View>
+  );
+};
 
 export const ChatBubble: React.FC<ChatBubbleProps> = ({
   message,
   isUser,
   timestamp,
   isTyping = false,
+  enableTTS = true,
 }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(isUser ? 30 : -30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: AppleTheme.animations.normal,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   // URLを検出してクリック可能にする
   const renderMessageWithLinks = (text: string) => {
-    // URLパターンを検出
     const urlPattern = /(https?:\/\/[^\s]+|maps:\/\/[^\s]+)/g;
     const parts = text.split(urlPattern);
     
@@ -25,7 +111,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
         return (
           <Text
             key={index}
-            style={styles.link}
+            style={[styles.link, isUser ? styles.userLink : styles.aiLink]}
             onPress={() => handleLinkPress(part)}
           >
             {part.includes('maps.google.com') ? '🗺️ Google Maps' : 
@@ -42,110 +128,179 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       const supported = await Linking.canOpenURL(url);
       if (supported) {
         await Linking.openURL(url);
-      } else {
-        console.log('リンクを開けませんでした:', url);
       }
     } catch (error) {
-      console.error('リンクエラー:', error);
+      console.error('Link error:', error);
     }
   };
-  return (
-    <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
-      <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-        {isTyping ? (
-          <View style={styles.typingIndicator}>
-            <View style={[styles.dot, styles.dot1]} />
-            <View style={[styles.dot, styles.dot2]} />
-            <View style={[styles.dot, styles.dot3]} />
-          </View>
-        ) : (
-          <>
-            <Text style={[styles.message, isUser ? styles.userMessage : styles.assistantMessage]}>
-              {renderMessageWithLinks(message)}
-            </Text>
-            
-          </>
-        )}
+
+  if (isTyping) {
+    return (
+      <Animated.View 
+        style={[
+          styles.container, 
+          styles.aiContainer,
+          {
+            opacity: fadeAnim,
+            transform: [
+              { translateX: slideAnim },
+              { scale: scaleAnim }
+            ]
+          }
+        ]}
+      >
+        <View style={[styles.bubble, styles.aiBubble, styles.typingBubble]}>
+          <ModernTypingIndicator />
+        </View>
+      </Animated.View>
+    );
+  }
+
+  const BubbleContent = () => {
+    if (isUser) {
+      return (
+        <LinearGradient
+          colors={[AppleTheme.colors.systemBlue, '#0051D5']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.bubble, styles.userBubble]}
+        >
+          <Text style={[styles.message, styles.userText]}>
+            {renderMessageWithLinks(message)}
+          </Text>
+          <Text style={[styles.timestamp, styles.userTimestamp]}>{timestamp}</Text>
+        </LinearGradient>
+      );
+    }
+    
+    return (
+      <View style={[styles.bubble, styles.aiBubble]}>
+        <Text style={[styles.message, styles.aiText]}>
+          {renderMessageWithLinks(message)}
+        </Text>
+        <Text style={[styles.timestamp, styles.aiTimestamp]}>{timestamp}</Text>
       </View>
-      <Text style={[styles.timestamp, isUser ? styles.userTimestamp : styles.assistantTimestamp]}>
-        {timestamp}
-      </Text>
-    </View>
+    );
+  };
+  
+  return (
+    <Animated.View 
+      style={[
+        styles.container, 
+        isUser ? styles.userContainer : styles.aiContainer,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { translateX: slideAnim },
+            { scale: scaleAnim }
+          ]
+        }
+      ]}
+    >
+      <BubbleContent />
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 4,
-    marginHorizontal: 12,
+    marginVertical: AppleTheme.spacing.sm,
+    paddingHorizontal: 0,
+    flexDirection: 'row',
   } as ViewStyle,
+  
   userContainer: {
-    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    paddingRight: AppleTheme.spacing.lg,
+    paddingLeft: AppleTheme.spacing.xxxxl,
   } as ViewStyle,
-  assistantContainer: {
-    alignItems: 'flex-start',
+  
+  aiContainer: {
+    justifyContent: 'flex-start',
+    paddingLeft: AppleTheme.spacing.lg,
+    paddingRight: AppleTheme.spacing.xxxxl,
   } as ViewStyle,
+  
   bubble: {
-    maxWidth: '75%',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 18,
+    maxWidth: '100%',
+    borderRadius: AppleTheme.radius.xl,
+    paddingVertical: AppleTheme.spacing.md + 2,
+    paddingHorizontal: AppleTheme.spacing.lg,
+    ...AppleTheme.shadows.small,
   } as ViewStyle,
+  
   userBubble: {
-    backgroundColor: '#7CB342',
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: AppleTheme.radius.md,
   } as ViewStyle,
-  assistantBubble: {
-    backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+  
+  aiBubble: {
+    backgroundColor: AppleTheme.colors.secondarySystemGroupedBackground,
+    borderBottomLeftRadius: AppleTheme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: AppleTheme.colors.separator,
   } as ViewStyle,
+  
+  typingBubble: {
+    paddingVertical: AppleTheme.spacing.lg,
+    minHeight: 48,
+    justifyContent: 'center',
+  } as ViewStyle,
+  
   message: {
-    fontSize: 16,
+    ...AppleTheme.typography.body,
     lineHeight: 22,
   } as TextStyle,
-  userMessage: {
-    color: '#FFFFFF',
+  
+  userText: {
+    color: AppleTheme.colors.systemBackground,
+    fontWeight: '500',
   } as TextStyle,
-  assistantMessage: {
-    color: '#212121',
+  
+  aiText: {
+    color: AppleTheme.colors.label,
   } as TextStyle,
+  
   timestamp: {
-    fontSize: 11,
-    marginTop: 4,
-    color: '#757575',
+    ...AppleTheme.typography.caption2,
+    marginTop: AppleTheme.spacing.sm,
   } as TextStyle,
+  
   userTimestamp: {
-    marginRight: 4,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'right',
   } as TextStyle,
-  assistantTimestamp: {
-    marginLeft: 4,
+  
+  aiTimestamp: {
+    color: AppleTheme.colors.tertiaryLabel,
+    textAlign: 'left',
   } as TextStyle,
-  typingIndicator: {
+  
+  link: {
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  } as TextStyle,
+  
+  userLink: {
+    color: 'rgba(255, 255, 255, 0.9)',
+  } as TextStyle,
+  
+  aiLink: {
+    color: AppleTheme.colors.systemBlue,
+  } as TextStyle,
+  
+  // Modern typing indicator
+  typingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
+    justifyContent: 'center',
+    paddingVertical: AppleTheme.spacing.sm,
   } as ViewStyle,
-  dot: {
+  
+  typingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#757575',
-    marginHorizontal: 2,
+    backgroundColor: AppleTheme.colors.tertiaryLabel,
+    marginHorizontal: 3,
   } as ViewStyle,
-  dot1: {
-    opacity: 0.4,
-  } as ViewStyle,
-  dot2: {
-    opacity: 0.7,
-  } as ViewStyle,
-  dot3: {
-    opacity: 1,
-  } as ViewStyle,
-  link: {
-    color: '#007AFF',
-    textDecorationLine: 'underline',
-    fontWeight: '500',
-  } as TextStyle,
 });
